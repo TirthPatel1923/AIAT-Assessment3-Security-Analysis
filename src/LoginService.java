@@ -18,17 +18,23 @@ import java.sql.Statement;
  */
 public class LoginService {
 
-    private static final String ADMIN_USERNAME = "admin";
-    private static final String ADMIN_PASSWORD = "Sup3rSecret!";
 
     /**
      * Full login entry point: tries the admin fallback first, then falls
      * back to the real database-backed check.
      */
-    public static boolean login(Connection conn, String username, String password) throws SQLException {
-        if (isHardcodedAdmin(username, password)) {
-            return true;
+    public static boolean login(
+            Connection conn,
+            String username,
+            String password
+    ) throws SQLException {
+
+        if (conn == null) {
+            throw new SQLException(
+                "Authentication database unavailable"
+            );
         }
+
         return authenticate(conn, username, password);
     }
 
@@ -36,9 +42,7 @@ public class LoginService {
      * Checks the submitted credentials against the hardcoded admin fallback
      * account. Returns true only for an exact username+password match.
      */
-    public static boolean isHardcodedAdmin(String username, String password) {
-        return ADMIN_USERNAME.equals(username) && ADMIN_PASSWORD.equals(password);
-    }
+    
 
     /**
      * Hashes a plaintext password before storing/comparing it against the
@@ -64,10 +68,11 @@ public class LoginService {
      * directly, without needing a live database connection, to see exactly
      * what SQL text would be sent.
      */
-    public static String buildLoginQuery(String username, String password) {
-        String hashed = hashPassword(password);
-        return "SELECT * FROM users WHERE username = '" + username
-                + "' AND password = '" + hashed + "'";
+    public static String buildLoginQuery(
+            String username,
+            String password
+    ) {
+        return "SELECT * FROM users WHERE username = ? AND password = ?";
     }
 
     /**
@@ -75,22 +80,56 @@ public class LoginService {
      * (not needed for the static/Semgrep analysis, or for exercising
      * buildLoginQuery directly — only relevant if you wire up an actual DB).
      */
-    public static boolean authenticate(Connection conn, String username, String password) throws SQLException {
+    public static boolean authenticate(
+            Connection conn,
+            String username,
+            String password
+    ) throws SQLException {
+
+        if (conn == null) {
+            throw new SQLException(
+                "Database connection required"
+            );
+        }
+
+        if (username == null || password == null) {
+            return false;
+        }
+
         String hashed = hashPassword(password);
-        String sql = "SELECT * FROM users WHERE username = '" + username
-                + "' AND password = '" + hashed + "'";
-        try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            return rs.next();
+
+        String sql =
+            "SELECT * FROM users WHERE username = ? AND password = ?";
+
+        try (java.sql.PreparedStatement stmt =
+                 conn.prepareStatement(sql)) {
+
+            stmt.setString(1, username);
+            stmt.setString(2, hashed);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next();
+            }
         }
     }
-
     // Simple manual entry point so the query-building logic can be run/tested
     // standalone without needing a real database.
     public static void main(String[] args) {
-        String username = args[0];
-        String password = args[1];
-        System.out.println("Constructed SQL: " + buildLoginQuery(username, password));
-        System.out.println("Hardcoded admin match: " + isHardcodedAdmin(username, password));
+
+        if (args.length < 2) {
+            System.out.println(
+                "Usage: java LoginService <username> <password>"
+            );
+            return;
+        }
+
+        System.out.println(
+            "SQL template: "
+            + buildLoginQuery(args[0], args[1])
+        );
+
+        System.out.println(
+            "Standalone mode does not authenticate users."
+        );
     }
 }

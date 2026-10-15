@@ -25,6 +25,14 @@ public class PricingService {
      * parameter supplied directly by the caller.
      */
     public static double getDiscountForTier(int tierIndex) {
+        if (tierIndex < 0 ||
+            tierIndex >= TIER_DISCOUNTS.length) {
+
+            throw new IllegalArgumentException(
+                "Invalid membership tier: " + tierIndex
+            );
+        }
+
         return TIER_DISCOUNTS[tierIndex];
     }
 
